@@ -13,6 +13,18 @@
 #endif
 
 
+#define CHECK_MEM ((p < iu->iu_mem_low) || (p >= iu->iu_mem_high))
+#define CHECK_AND_RETURN_0 do {                   \
+  if(CHECK_MEM)                                   \
+    return 0;                                     \
+  } while(0)
+
+#define CHECK_AND_RETURN do {                     \
+  if(CHECK_MEM)                                   \
+    return;                                       \
+  } while(0)
+
+
 /*
  * Memory access wrappers (and endian conversion routines)
  *
@@ -21,12 +33,14 @@
  */
 static __inline uint8_t mem_rd8(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return *(uint8_t *)p;
 }
 
 static __inline void mem_wr8(void *p, uint8_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint8_t *)p = v;
 }
@@ -41,18 +55,21 @@ static __inline uint16_t swap16(uint16_t val)
 
 static __inline uint16_t mem_rd16(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return swap16(*(const uint16_t *)p);
 }
 
 static __inline uint32_t mem_rd32(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return __builtin_bswap32(*(const uint32_t *)p);
 }
 
 static __inline uint64_t mem_rd64(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return __builtin_bswap64(*(const uint64_t *)p);
 }
@@ -62,18 +79,21 @@ static __inline uint64_t mem_rd64(const void *p, ir_unit_t *iu)
 
 static __inline void mem_wr16(void *p, uint16_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint16_t *)p = swap16(v);
 }
 
 static __inline void mem_wr32(void *p, uint32_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint32_t *)p = __builtin_bswap32(v);
 }
 
 static __inline void mem_wr64(void *p, uint64_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint64_t *)p = __builtin_bswap64(v);
 }
@@ -102,18 +122,21 @@ static __inline void host_wr64(void *p, uint64_t v)
 
 static __inline uint16_t mem_rd16(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return *(const uint16_t *)p;
 }
 
 static __inline uint32_t mem_rd32(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return *(const uint32_t *)p;
 }
 
 static __inline uint64_t mem_rd64(const void *p, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN_0;
   CHECK_MEM_ACCESS();
   return *(const uint64_t *)p;
 }
@@ -121,18 +144,21 @@ static __inline uint64_t mem_rd64(const void *p, ir_unit_t *iu)
 
 static __inline void mem_wr16(void *p, uint16_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint16_t *)p = v;
 }
 
 static __inline void mem_wr32(void *p, uint32_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint32_t *)p = v;
 }
 
 static __inline void mem_wr64(void *p, uint64_t v, ir_unit_t *iu)
 {
+  CHECK_AND_RETURN;
   CHECK_MEM_ACCESS();
   *(uint64_t *)p = v;
 }
