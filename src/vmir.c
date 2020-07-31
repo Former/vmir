@@ -42,7 +42,6 @@
 
 #include "vmir.h"
 
-// #define VM_TRACE
 
 #if defined(__SANITIZE_ADDRESS__) && !defined(VM_DONT_USE_COMPUTED_GOTO)
 #define VM_DONT_USE_COMPUTED_GOTO
@@ -53,14 +52,10 @@
 #endif
 
 #if defined(VM_TRACE)
-#undef VM_NO_STACK_FRAME
+//#undef VM_NO_STACK_FRAME
 #endif
 
 
-
-#ifndef VM_NO_STACK_FRAME
-static void vmir_traceback(struct ir_unit *iu, const char *info);
-#endif
 
 #ifdef VM_TRACE
 static void vmir_access_violation(struct ir_unit *iu, const void *p,
@@ -160,10 +155,6 @@ struct ir_unit {
   jmp_buf *iu_err_jmpbuf;
   int iu_exit_code;
   void *iu_opaque;
-  void *iu_jit_mem;
-  int iu_jit_mem_alloced;
-  int iu_jit_ptr;
-  uint32_t iu_jit_cpuflags;
 
   enum {
     VMIR_BITCODE,
@@ -172,16 +163,15 @@ struct ir_unit {
 
   vmir_exception_t iu_exception;
 
-  const struct vm_frame *iu_current_frame;
-  char *iu_traced_function;
-
+  // iu_mem
+  // 0 ... [unused]... 4096 [global_var] iu_data_ptr ...[unused]... iu_data_ptr|align(4096)=iu_heap_start ... [heap]... iu_memsize
   uint32_t iu_data_ptr;
   uint32_t iu_heap_start;
   void *iu_heap;
   uint32_t iu_heap_usage;
-  uint32_t iu_rsize;
-  uint32_t iu_asize;
-  uint32_t iu_memsize;
+  uint32_t iu_rsize; // reg size - TODO not use?
+  uint32_t iu_asize; // stack size
+  uint32_t iu_memsize; 
 
   uint32_t iu_stack_stash;
 
@@ -331,10 +321,6 @@ struct ir_function {
   int if_instr_backref_size;
 
   int if_jit_offset;
-
-#ifndef VM_NO_STACK_FRAME
-  int if_peak_stack_use;
-#endif
 };
 
 
@@ -589,9 +575,9 @@ addstrf(char **dst, const char *fmt, ...)
 #include "vmir_vm.h"
 #include "vmir_instr.c"
 #include "vmir_function.c"
-#if defined(__arm__) && (defined(__linux__) || defined(__ANDROID__))
-#include "vmir_jit_arm.c"
-#endif
+//#if defined(__arm__) && (defined(__linux__) || defined(__ANDROID__))
+//#include "vmir_jit_arm.c"
+//#endif
 #include "vmir_transform.c"
 #include "vmir_vm.c"
 #include "vmir_libc.c"
@@ -837,18 +823,6 @@ vmir_get_opaque(ir_unit_t *iu)
   return iu->iu_opaque;
 }
 
-
-vmir_function_resolver_t vmir_get_external_function_resolver(ir_unit_t *iu)
-{
-	return iu->iu_external_function_resolver;
-}
-
-void vmir_set_external_function_resolver(ir_unit_t *iu, vmir_function_resolver_t fn)
-{
-	iu->iu_external_function_resolver = fn;
-}
-
-
 /**
  *
  */
@@ -907,10 +881,6 @@ vmir_load(ir_unit_t *iu, const uint8_t *u8, int len)
     return VMIR_ERR_LOAD_ERROR;
   }
 
-#ifdef VMIR_VM_JIT
-  jit_init(iu);
-#endif
-
   const uint32_t magic = read_bits(&bs, 32);
   iu->iu_data_ptr = 4096;
   switch(magic) {
@@ -930,9 +900,6 @@ vmir_load(ir_unit_t *iu, const uint8_t *u8, int len)
 
   free(iu->iu_text_alloc);
 
-#ifdef VMIR_VM_JIT
-  jit_seal_code(iu);
-#endif
   iu->iu_heap_start = VMIR_ALIGN(iu->iu_data_ptr, 4096);
   iu->iu_stats.data_size = iu->iu_heap_start;
 
@@ -1109,14 +1076,6 @@ vmir_set_debugged_function(ir_unit_t *iu, const char *function)
 {
   free(iu->iu_debugged_function);
   iu->iu_debugged_function = function ? strdup(function) : NULL;
-}
-
-
-void
-vmir_set_traced_function(ir_unit_t *iu, const char *fname)
-{
-  free(iu->iu_traced_function);
-  iu->iu_traced_function = fname ? strdup(fname) : NULL;
 }
 
 const vmir_stats_t *

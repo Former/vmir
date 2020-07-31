@@ -1674,9 +1674,6 @@ vmir_libc_hexdump(void *ret, const void *rf, ir_unit_t *iu)
 static int
 vmir_libc_traceback(void *ret, const void *rf, ir_unit_t *iu)
 {
-#ifndef VM_NO_STACK_FRAME
-  vmir_traceback(iu, "__vmir_traceback");
-#endif
   return 0;
 }
 

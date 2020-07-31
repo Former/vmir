@@ -2070,14 +2070,6 @@ coalesce(ir_unit_t *iu,
             LIST_REMOVE(ivi, ivi_value_link);
             ivi->ivi_value = saved;
             LIST_INSERT_HEAD(&saved->iv_instructions, ivi, ivi_value_link);
-#ifdef VMIR_VM_JIT
-            if(!(iu->iu_debug_flags_func & VMIR_DBG_DISABLE_JIT)) {
-              memset(ivi->ivi_instr->ii_liveness,
-                     0, setwords * sizeof(uint32_t) * 3);
-              liveness_set_gen(ivi->ivi_instr, iu,
-                               ivi->ivi_instr->ii_liveness + setwords);
-            }
-#endif
             if(iu->iu_debug_flags_func & VMIR_DBG_DUMP_REGALLOC) {
               printf("\tPost altering instruction %s\n",
                      instr_str(iu, ivi->ivi_instr, 1));
@@ -2108,13 +2100,6 @@ coalesce(ir_unit_t *iu,
   }
 
   remove_empty_bb(iu, f);
-
-#ifdef VMIR_VM_JIT
-  if(!(iu->iu_debug_flags_func & VMIR_DBG_DISABLE_JIT)) {
-    liveness_update(f, setwords, ffv);
-    jit_analyze(iu, f, setwords, ffv);
-  }
-#endif
 
   reg_alloc(iu, mtx, temp_values, ffv, f);
   free(mtx);

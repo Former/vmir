@@ -137,21 +137,6 @@ vm_ext_function_t *vmir_default_external_function_resolver(const char *function,
                                                            void *opaque);
 
 /**
- *
- */
-vmir_function_resolver_t vmir_get_external_function_resolver(ir_unit_t *);
-
-/**
- * Set function to call for resolving unresolved function symbols.
- *
- * Note that if using this and you want to keep the internal libc functions,
- * this function should call vmir_default_external_function_resolver() as
- * last resort to make VMIR use the built-in function for the given lookup.
- */
-void vmir_set_external_function_resolver(ir_unit_t * iu,
-                                         vmir_function_resolver_t fn);
-
-/**
  * Override defaults functions for filesystem access
  */
 void vmir_set_fsops(ir_unit_t *iu, const vmir_fsops_t *ops);
@@ -346,8 +331,6 @@ vm_ext_function_t *vmir_function_tab_lookup(const char *function,
 #define VMIR_DBG_IGNORE_UNRESOLVED_FUNCTIONS 0x80
 
 void vmir_set_debug_flags(ir_unit_t *iu, int flags);
-
-void vmir_set_traced_function(ir_unit_t *iu, const char *fname);
 
 /**
  * Debug only a specific function. If unset (or set to NULL) any debugging

@@ -29,21 +29,14 @@
 #include <stdint.h>
 #include <unistd.h>
 
-
 typedef struct vm_frame {
   ir_unit_t *iu;
   uint32_t allocaptr;
-
-#ifndef VM_NO_STACK_FRAME
-  const ir_function_t *func;
-  const struct vm_frame *prev;
-  uint32_t *allocapeak;
 
 #ifdef VM_TRACE
   int trace;
 #endif
 
-#endif
 } vm_frame_t;
 
 
@@ -71,35 +64,6 @@ typedef struct ir_instr_backref {
 
 #endif
 
-#ifndef VM_NO_STACK_FRAME
-
-
-static ir_function_t *
-vm_getfunc(int callee, ir_unit_t *iu)
-{
-  if(callee >= VECTOR_LEN(&iu->iu_functions))
-    return NULL;
-  return VECTOR_ITEM(&iu->iu_functions, callee);
-}
-
-
-static void
-vmir_traceback(struct ir_unit *iu, const char *info)
-{
-  const vm_frame_t *f;
-
-  vmir_log(iu, VMIR_LOG_INFO, "--- Traceback (%s) ---", info);
-  for(f = iu->iu_current_frame; f != NULL; f = f->prev) {
-    vmir_log(iu, VMIR_LOG_INFO, "%s()", f->func->if_name);
-  }
-  vmir_log(iu, VMIR_LOG_INFO, "--- Traceback end ---");
-}
-
-
-
-
-#endif
-
 static void __attribute__((noinline)) __attribute__((noreturn))
 vm_stop(ir_unit_t *iu, int reason, int code)
 {
@@ -110,9 +74,6 @@ vm_stop(ir_unit_t *iu, int reason, int code)
 static void __attribute__((noinline)) __attribute__((noreturn))
 vm_bad_function(ir_unit_t *iu, uint32_t fid)
 {
-#ifndef VM_NO_STACK_FRAME
-  vmir_traceback(iu, "bad function called");
-#endif
   vm_stop(iu, VM_STOP_BAD_FUNCTION, fid);
 }
 
@@ -196,9 +157,6 @@ vm_exit(void *ret, const void *rf, ir_unit_t *iu)
 static int
 vm_abort(void *ret, const void *rf, ir_unit_t *iu)
 {
-#ifndef VM_NO_STACK_FRAME
-  vmir_traceback(iu, "abort");
-#endif
   vm_stop(iu, VM_STOP_ABORT, 0);
   return 0;
 }
@@ -527,7 +485,7 @@ vm_funcname(int callee, ir_unit_t *iu)
 
 #define HOSTADDR(x) ((hostmem) + (x))
 
-
+/*
 static void *
 #ifndef VM_NO_STACK_FRAME
 __attribute__((noinline))
@@ -548,7 +506,7 @@ __attribute__((noinline))
          *(uint32_t *)(rf + 16));
 #endif
   return r;
-}
+}*/
 
 #ifdef VM_TRACE
 
@@ -646,22 +604,9 @@ vm_exec(uint16_t *I, void *rf, void *ret, const vm_frame_t *P)
   ir_unit_t *iu = F.iu;
   void *hostmem = iu->iu_mem;
 
-#ifndef VM_NO_STACK_FRAME
-  iu->iu_current_frame = &F;
-  F.prev = P;
-#ifdef VM_TRACE
-  F.trace = !iu->iu_traced_function ||
-    !strcmp(P->func->if_name, iu->iu_traced_function);
-#endif
-
-#define RESTORE_CURRENT_FRAME() iu->iu_current_frame = P
-#define SET_CALLEE_FUNC(x) F.func = vm_getfunc(x, iu)
-#define ALLOCATRACEPEAK() *F.allocapeak = VMIR_MAX(*F.allocapeak, F.allocaptr)
-#else
 #define RESTORE_CURRENT_FRAME()
 #define SET_CALLEE_FUNC(x)
 #define ALLOCATRACEPEAK()
-#endif
 
     RESTORE_CURRENT_FRAME();
 
@@ -679,11 +624,7 @@ vm_exec(uint16_t *I, void *rf, void *ret, const vm_frame_t *P)
 
 #define NEXT(skip) I+=skip; opc = *I++; goto reswitch
 
-#ifdef VM_TRACE
-#define VMOP(x) case VM_ ## x : do { if(F.trace) { vm_trace_instruction(&F, P->func, I, #x);} } while(0);
-#else
 #define VMOP(x) case VM_ ## x :
-#endif
 
   opc = *I++;
  reswitch:
@@ -702,8 +643,8 @@ vm_exec(uint16_t *I, void *rf, void *ret, const vm_frame_t *P)
 
   VMOP(JIT_CALL)
   {
-    void *(*code)(void *, void *, void *, void*) = iu->iu_jit_mem + UIMM32(0);
-    I = do_jit_call(rf, iu->iu_mem, code);
+//    void *(*code)(void *, void *, void *, void*) = iu->iu_jit_mem + UIMM32(0);
+ //   I = do_jit_call(rf, iu->iu_mem, code);
     NEXT(0);
   }
 
@@ -4550,52 +4491,15 @@ emit_resume(ir_unit_t *iu, ir_instr_resume_t *r)
  */
 static void
 instr_emit(ir_unit_t *iu, ir_bb_t *bb, ir_function_t *f
-#ifdef VMIR_VM_JIT
-           , jitctx_t *jc
-#endif
            )
 {
   ir_instr_t *ii;
   //  printf("=========== BB %s.%d\n", f->if_name, bb->ib_id);
 
 
-#ifdef VMIR_VM_JIT
-  if(bb->ib_jit) {
-    int jitoffset = jit_emit(iu, bb, jc);
-
-    if(bb->ib_only_jit_sucessors)
-      return;
-    assert(jitoffset >= 0);
-#ifdef VM_TRACE
-    char tmp[128];
-    ir_instr_backref_t *iib = f->if_instr_backrefs + f->if_instr_backref_size;
-    iib->offset = iu->iu_text_ptr - iu->iu_text_alloc;
-    snprintf(tmp, sizeof(tmp), "JIT CALL to 0x%x", jitoffset);
-    iib->str = strdup(tmp);
-    iib->bb = bb->ib_id;
-    f->if_instr_backref_size++;
-#endif
-    emit_op(iu, VM_JIT_CALL);
-    emit_i32(iu, jitoffset);
-    return;
-  } else if(bb->ib_force_jit_entrypoint) {
-    jit_emit_stub(iu, bb, jc);
-  }
-#endif
-
-
   TAILQ_FOREACH(ii, &bb->ib_instrs, ii_link) {
     //    printf("EMIT INSTR: %s\n", instr_str(iu, ii, 1));
     assert(ii->ii_jit == 0);
-
-#ifdef VM_TRACE
-    ir_instr_backref_t *iib = f->if_instr_backrefs + f->if_instr_backref_size;
-    iib->offset = iu->iu_text_ptr - iu->iu_text_alloc;
-    iib->str = instr_stra(iu, ii, 0);
-    iib->bb = bb->ib_id;
-    f->if_instr_backref_size++;
-#endif
-
 
     switch(ii->ii_class) {
 
@@ -4791,19 +4695,7 @@ vm_emit_function(ir_unit_t *iu, ir_function_t *f)
   f->if_instr_backref_size = 0;
 #endif
 
-#ifdef VMIR_VM_JIT
-  jitctx_t jc;
-  jitctx_init(iu, f, &jc);
-  f->if_jit_offset = iu->iu_jit_ptr;
-#endif
-
   TAILQ_FOREACH(ib, &f->if_bbs, ib_link) {
-#ifdef VMIR_VM_JIT
-    if(f->if_full_jit) {
-      jit_emit(iu, ib, &jc);
-      continue;
-    }
-#endif
     ib->ib_text_offset = iu->iu_text_ptr - iu->iu_text_alloc;
     if(iu->iu_debug_flags_func & VMIR_DBG_BB_INSTRUMENT) {
       emit_op(iu, VM_INSTRUMENT_COUNT);
@@ -4816,20 +4708,13 @@ vm_emit_function(ir_unit_t *iu, ir_function_t *f)
       ir_instrumentation_t ii = {f, ib->ib_id, num_instructions, 0};
       VECTOR_PUSH_BACK(&iu->iu_instrumentation, ii);
     }
-    instr_emit(iu, ib, f
-#ifdef VMIR_VM_JIT
-               ,&jc
-#endif
-               );
+    instr_emit(iu, ib, f);
   }
 
-#ifdef VMIR_VM_JIT
-  jitctx_done(iu, f, &jc);
-#endif
   f->if_vm_text_size = iu->iu_text_ptr - iu->iu_text_alloc;
   if(f->if_full_jit) {
     assert(f->if_vm_text_size == 0);
-    f->if_ext_func = iu->iu_jit_mem + f->if_jit_offset;
+//    f->if_ext_func = iu->iu_jit_mem + f->if_jit_offset;
   } else {
     f->if_vm_text = malloc(f->if_vm_text_size);
     memcpy(f->if_vm_text, iu->iu_text_alloc, f->if_vm_text_size);
@@ -4837,9 +4722,6 @@ vm_emit_function(ir_unit_t *iu, ir_function_t *f)
     iu->iu_stats.vm_code_size += f->if_vm_text_size;
     branch_fixup(iu);
   }
-#ifdef VMIR_VM_JIT
-  jit_branch_fixup(iu, f);
-#endif
 }
 
 
@@ -5030,10 +4912,6 @@ vmir_vm_function_call(ir_unit_t *iu, ir_function_t *f, void *out, ...)
     }
   }
 
-#ifndef VM_NO_STACK_FRAME
-    uint32_t allocapeak = allocaptr;
-#endif
-
   jmp_buf *prevjb = iu->iu_err_jmpbuf;
   iu->iu_err_jmpbuf = &jb;
 
@@ -5045,14 +4923,10 @@ vmir_vm_function_call(ir_unit_t *iu, ir_function_t *f, void *out, ...)
     vm_frame_t F = {
       .iu = iu,
       .allocaptr = allocaptr,
-#ifndef VM_NO_STACK_FRAME
-      .func = f,
-      .allocapeak = &allocapeak,
-#endif
     };
 
     if(f->if_ext_func != NULL) {
-      r = f->if_ext_func(out, rfa, iu, iu->iu_mem);
+      //r = f->if_ext_func(out, rfa, iu, iu->iu_mem);
     } else {
       r = vm_exec(f->if_vm_text, rfa, out, &F);
     }
@@ -5061,23 +4935,6 @@ vmir_vm_function_call(ir_unit_t *iu, ir_function_t *f, void *out, ...)
       r = VM_STOP_UNCAUGHT_EXCEPTION;
   }
   iu->iu_err_jmpbuf = prevjb;
-
-#ifndef VM_NO_STACK_FRAME
-  uint32_t stackuse = allocapeak - allocaptr;
-
-  if(stackuse > f->if_peak_stack_use) {
-    f->if_peak_stack_use = stackuse;
-    if(allocapeak - allocaptr > iu->iu_asize) {
-      vmir_log(iu, VMIR_LOG_ERROR, "%s() peak stack usage: %d > avail: %d",
-               f->if_name, allocapeak - allocaptr, iu->iu_asize);
-    } else {
-      iu->iu_stats.peak_stack_size =
-        VMIR_MAX(iu->iu_stats.peak_stack_size, stackuse);
-      vmir_log(iu, VMIR_LOG_DEBUG, "%s() peak stack usage: %d",
-               f->if_name, allocapeak - allocaptr);
-    }
-  }
-#endif
 
   if(iu->iu_stack_stash == 0) {
     iu->iu_stack_stash = allocaptr;
@@ -5139,6 +4996,5 @@ vmir_access_trap(struct ir_unit *iu, const void *p, const char *func)
            iu->iu_mem_low,
            iu->iu_mem_high,
            p);
-  vmir_traceback(iu, "data breakpoint");
 }
 #endif
